@@ -40,23 +40,26 @@ def diag():
 
 # ===== SinaX persona =====
 DEFAULT_SINAX_PROMPT = r"""
-You are SinaX, a bilingual (FA/EN) industrial advisor for Iran/MENA with PRIORITY on:
-1) Tools & Hardware (power tools, hand tools, accessories, safety tools)
-2) Automotive spare parts (engine/powertrain, brake, suspension, electrical incl. Hybrid/EV)
+You are SinaX, FA/EN industrial advisor focused on:
+1) Power/hand tools & accessories
+2) Automotive spare parts (ICE/Hybrid/EV)
 
-Rules:
-- Default Persian unless user writes English.
-- Keep answers SHORT: ≤10 lines (یا ≤6 بولت).
-- No shopping links / live prices. Focus on specs, selection, compatibility, safety/standards.
-- Use layout ONLY for technical questions:
+Output rules (STRICT):
+- Persian by default; if user writes English → English.
+- Max 6 bullets OR 10 lines.
+- Always give best-guess diagnosis/steps even with limited info.
+- If info missing: ask EXACTLY ONE precise question at the end.
+- Do NOT repeat the same generic request across turns.
+- No shopping links or live prices.
+- Format (if technical):
   1) Summary (1 line)
-  2) Suggested options (≤3) – name + 1 advantage + 1 limit
-  3) Key specs to check (3–6 bullets)
-  4) Follow-up question (1 line)
-- If the user greets or sends a vague message, reply with a one-line greeting + one precise question to continue.
-- When unclear, ask exactly ONE clarifying question.
+  2) Likely causes / Options (≤3)
+  3) Key checks (3–6)
+  4) Next action (1 line)
+  5) One precise follow-up question (1 line)
 """
 SYSTEM_PROMPT_SINAX = os.getenv("SINAX_PROMPT", DEFAULT_SINAX_PROMPT).strip()
+
 
 def detect_lang(txt: str) -> str:
     return "fa" if re.search(r"[\u0600-\u06FF]", txt) else "en"
@@ -64,13 +67,6 @@ def detect_lang(txt: str) -> str:
 # فقط سلام را کوتاه جواب بده؛ بقیه مستقیم برود OpenAI
 GREET_FA = {"سلام","درود","سلاام","salam"}
 GREET_EN = {"hi","hello","hey"}
-
-def quick_reply_if_small(text: str, chat_id: int):
-    t = text.strip()
-    low = t.lower()
-    if (low in GREET_EN) or (t in GREET_FA):
-        return "سلام! روی کدام مورد کمک می‌خواهی؟ (مثلاً: «اره فارسی‌بُر ۲۵۰میلی»، «دیسک ترمز ۲۰۶»، «باتری ۱۸V ماکیتا»)"
-    return None
 
 
 
@@ -93,26 +89,23 @@ def _extract_text(resp) -> str:
         pass
     return ""
 
-def ask_openai(user_text: str, chat_id: int) -> str:
-    qr = quick_reply_if_small(user_text, chat_id)
-    if qr:
-        return qr
-
+def ask_openai(user_text: str) -> str:
     lang = "fa" if re.search(r"[\u0600-\u06FF]", user_text) else "en"
-    lang_hint = "پاسخ را کوتاه و بولت‌وار به فارسی بده." if lang=="fa" else "Answer briefly in English with bullets."
+    lang_hint = "پاسخ کوتاه، بولت‌وار و دقیق به فارسی." if lang=="fa" else "Answer briefly with precise bullets."
 
     resp = client.responses.create(
         model="gpt-5-mini",
         instructions=f"{SYSTEM_PROMPT_SINAX}\n\nLanguage rule: {lang_hint}",
         input=user_text,
-        max_output_tokens=300
+        max_output_tokens=220
     )
-    out = _extract_text(resp)
-    if out:
-        return out
+    try:
+        out = (resp.output_text or "").strip()
+    except Exception:
+        out = ""
+    return out or ( "یک پاسخ فنی کوتاه ارائه نشد—نام/مدل ابزار یا قطعه را بنویس تا دقیق‌تر راهنمایی کنم." if lang=="fa"
+                    else "Didn't get a short technical answer—share tool/part name/model." )
 
-    # اگر باز هم چیزی نیامد، یک جواب مفید پیش‌فرض بده (برای ابزار/قطعات)
-    return "برای راهنمایی دقیق، نام ابزار/قطعه و مدل را بنویس (مثلاً: «اره فارسی‌بُر Hitachi C12RSH زاویه را دقیق نمی‌زند»)."
 
 
 
@@ -140,7 +133,8 @@ def telegram_webhook():
 
     try:
         # تغییر مهم: chat_id هم می‌دهیم تا روتر فقط یک‌بار درخواست توضیح بدهد
-        answer = ask_openai(user_text, chat_id)
+        answer = ask_openai(user_text)
+
 
     except Exception as e:
         print("OPENAI_ERROR:", repr(e))
