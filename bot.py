@@ -52,16 +52,17 @@ def detect_lang(txt: str) -> str:
     return "fa" if re.search(r"[\u0600-\u06FF]", txt) else "en"
 
 def ask_openai(user_text: str) -> str:
-    lang = detect_lang(user_text)
+    lang = "fa" if re.search(r"[\u0600-\u06FF]", user_text) else "en"
     lang_hint = "پاسخ را به فارسی بده." if lang == "fa" else "Answer in English."
     resp = client.responses.create(
         model="gpt-5-mini",
         instructions=f"{SYSTEM_PROMPT_SINAX}\n\nLanguage rule: {lang_hint}",
         input=user_text,
-        temperature=0.2,
-        max_output_tokens=800,
+        max_output_tokens=800,   # keep this
+        # temperature removed (model rejects it)
     )
     return resp.output_text
+
 
 def tg_send(chat_id: int, text: str):
     requests.post(f"{TELEGRAM_API}/sendMessage",
