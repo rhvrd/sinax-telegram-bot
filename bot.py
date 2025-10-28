@@ -40,28 +40,52 @@ def diag():
 
 # ===== SinaX persona =====
 DEFAULT_SINAX_PROMPT = r"""
-You are SinaX – Smart Industrial Navigation Assistant eXpert, a bilingual (Persian–English) AI industrial consultant and technical advisor.
-Mission: practical, unbiased guidance for Iran/MENA.
-Constraints: no shopping links, no live prices; focus on specs, selection criteria, compatibility, safety hints (IEC/ISO/ASME/NEC).
-Response style: Persian by default (English if user writes English); concise, structured.
-Template: Summary; Suggested Options (≤3); Key Specs; Equivalents; References; Follow-up Question.
+You are SinaX, a bilingual (FA/EN) industrial advisor for Iran/MENA with PRIORITY on:
+1) Tools & Hardware (power tools, hand tools, accessories, safety tools)
+2) Automotive spare parts (engine/powertrain, brake, suspension, electrical incl. Hybrid/EV)
+
+Rules:
+- Default Persian unless user writes English.
+- Keep answers SHORT: ≤10 lines (یا ≤6 بولت).
+- No shopping links / live prices. Focus on specs, selection, compatibility, safety/standards.
+- Use layout ONLY for technical questions:
+  1) Summary (1 line)
+  2) Suggested options (≤3) – name + 1 advantage + 1 limit
+  3) Key specs to check (3–6 bullets)
+  4) Follow-up question (1 line)
+- If the user greets or sends a vague message, reply with a one-line greeting + one precise question to continue.
+- When unclear, ask exactly ONE clarifying question.
 """
 SYSTEM_PROMPT_SINAX = os.getenv("SINAX_PROMPT", DEFAULT_SINAX_PROMPT).strip()
 
 def detect_lang(txt: str) -> str:
     return "fa" if re.search(r"[\u0600-\u06FF]", txt) else "en"
+GREET_WORDS_FA = {"سلام","درود","سلاام","salam"}
+GREET_WORDS_EN = {"hi","hello","hey"}
+
+def quick_reply_if_small(text: str):
+    t = text.strip().lower()
+    if t in GREET_WORDS_EN or t in {w.lower() for w in GREET_WORDS_FA}:
+        return "سلام! روی کدام مورد کمک می‌خواهی؟ (مثلاً: «فرز انگشتی ۷۲۰وات»، «دیسک ترمز پژو ۲۰۶»، «باتری لیتیوم ۱۸V ماکیتا»)"
+    if len(t) < 3:
+        return "لطفاً دقیق‌تر بگو چه ابزاری/قطعه‌ای مدنظرت است."
+    return None
 
 def ask_openai(user_text: str) -> str:
+    qr = quick_reply_if_small(user_text)
+    if qr:
+        return qr
+
     lang = "fa" if re.search(r"[\u0600-\u06FF]", user_text) else "en"
-    lang_hint = "پاسخ را به فارسی بده." if lang == "fa" else "Answer in English."
+    lang_hint = "پاسخ را کوتاه و بولت‌وار به فارسی بده." if lang=="fa" else "Answer briefly in English with bullets."
+
     resp = client.responses.create(
         model="gpt-5-mini",
         instructions=f"{SYSTEM_PROMPT_SINAX}\n\nLanguage rule: {lang_hint}",
         input=user_text,
-        max_output_tokens=800,   # keep this
-        # temperature removed (model rejects it)
+        max_output_tokens=300  # کوتاه و سریع
     )
-    return resp.output_text
+    return resp.output_text or "باشه—لطفاً دقیق‌تر بگو چه ابزاری/قطعه‌ای مدنظرت است."
 
 
 def tg_send(chat_id: int, text: str):
