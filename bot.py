@@ -61,38 +61,35 @@ SYSTEM_PROMPT_SINAX = os.getenv("SINAX_PROMPT", DEFAULT_SINAX_PROMPT).strip()
 def detect_lang(txt: str) -> str:
     return "fa" if re.search(r"[\u0600-\u06FF]", txt) else "en"
 
-# ـــــ روتر برای پیام‌های خیلی کوتاه / سلام ـــــ
+# فقط یک‌بار برای هر chat_id تذکر می‌دهیم
+ASKED_CLARIFY = set()
 GREET_FA = {"سلام","درود","سلاام","salam"}
 GREET_EN = {"hi","hello","hey"}
-
-# یادآوری: این حافظه ساده است و با ری‌استارت پاک می‌شود (برای Render کافی است)
-ASKED_CLARIFY = set()   # chat_id هایی که یکبار درخواست توضیح داده‌ایم
-
-# کلماتی که نشان می‌دهد کاربر مسئله فنی دارد → نباید روتر مزاحم شود
-TECH_HINTS = {"خراب","تعویض","عوض","کارنمیکنه","قطع","گیر","صدا","سوخته","روشن","خاموش"}
+TECH_HINTS = {"خراب","تعویض","عوض","گیر","کارنمیکنه","کار نمی‌کنه","قطع","صدا","سوخته","روشن","خاموش","تیغه","دیسک","بلبرینگ","باتری","ولتاژ","توان","کابل"}
 
 def quick_reply_if_small(text: str, chat_id: int):
     t = text.strip()
     low = t.lower()
 
-    # 1) سلام خالی → یک خط خوش‌آمد + پرسش
+    # فقط سلامِ خالی → پاسخ یک‌خطی
     if (low in GREET_EN) or (t in GREET_FA):
-        return "سلام! دقیق بگو روی کدام مورد کمک می‌خواهی؟ (مثلاً: «فرز انگشتی ۷۲۰وات»، «دیسک ترمز ۲۰۶»، «باتری ۱۸V ماکیتا»)"
+        return "سلام! روی کدام مورد کمک می‌خواهی؟ (مثلاً: «فرز انگشتی ۷۲۰وات»، «دیسک ترمز ۲۰۶»، «باتری ۱۸V ماکیتا»)"
 
-    # اگر نشانه‌های فنی دارد، نگذاریم روتر مزاحم شود
-    if any(w in t for w in TECH_HINTS):
+    # اگر قبلاً یک‌بار تذکر داده‌ایم، دیگر تکرار نکن
+    if chat_id in ASKED_CLARIFY:
         return None
 
-    # 2) خیلی کوتاه و مبهم: فقط یک‌بار برای هر chat_id
-    if (len(t) <= 4 or len(t.split()) <= 2) and (chat_id not in ASKED_CLARIFY):
+    # اگر پیام خیلی مبهم/کوتاه بود و نشانه فنی هم ندارد → فقط یک‌بار تذکر
+    if (len(t) <= 6 or len(t.split()) <= 2) and not any(w in t for w in TECH_HINTS):
         ASKED_CLARIFY.add(chat_id)
         return "لطفاً دقیق‌تر بگو چه ابزاری/قطعه‌ای مدنظرت است (برند/مدل/توان/ولتاژ)."
 
     return None
 
 
+
 def ask_openai(user_text: str, chat_id: int) -> str:
-    
+    # روتر: فقط یک‌بار تذکر؛ بعد از آن مستقیماً برو سراغ مدل
     qr = quick_reply_if_small(user_text, chat_id)
     if qr:
         return qr
@@ -106,7 +103,8 @@ def ask_openai(user_text: str, chat_id: int) -> str:
         input=user_text,
         max_output_tokens=300
     )
-    return resp.output_text or "باشه—لطفاً جزئیات بیشتری از ابزار/قطعه بگو (برند/مدل/توان/ولتاژ/سال ساخت)."
+    return resp.output_text or "باشه—لطفاً چند جزئیات از ابزار/قطعه بگو (برند/مدل/توان/ولتاژ)."
+
 
 
 
@@ -133,6 +131,7 @@ def telegram_webhook():
     try:
         # تغییر مهم: chat_id هم می‌دهیم تا روتر فقط یک‌بار درخواست توضیح بدهد
         answer = ask_openai(user_text, chat_id)
+
     except Exception as e:
         print("OPENAI_ERROR:", repr(e))
         answer = "SINAX: error occurred. Try again."
