@@ -60,19 +60,40 @@ SYSTEM_PROMPT_SINAX = os.getenv("SINAX_PROMPT", DEFAULT_SINAX_PROMPT).strip()
 
 def detect_lang(txt: str) -> str:
     return "fa" if re.search(r"[\u0600-\u06FF]", txt) else "en"
-GREET_WORDS_FA = {"سلام","درود","سلاام","salam"}
-GREET_WORDS_EN = {"hi","hello","hey"}
 
-def quick_reply_if_small(text: str):
-    t = text.strip().lower()
-    if t in GREET_WORDS_EN or t in {w.lower() for w in GREET_WORDS_FA}:
-        return "سلام! روی کدام مورد کمک می‌خواهی؟ (مثلاً: «فرز انگشتی ۷۲۰وات»، «دیسک ترمز پژو ۲۰۶»، «باتری لیتیوم ۱۸V ماکیتا»)"
-    if len(t) < 3:
-        return "لطفاً دقیق‌تر بگو چه ابزاری/قطعه‌ای مدنظرت است."
+# ـــــ روتر برای پیام‌های خیلی کوتاه / سلام ـــــ
+GREET_FA = {"سلام","درود","سلاام","salam"}
+GREET_EN = {"hi","hello","hey"}
+
+# یادآوری: این حافظه ساده است و با ری‌استارت پاک می‌شود (برای Render کافی است)
+ASKED_CLARIFY = set()   # chat_id هایی که یکبار درخواست توضیح داده‌ایم
+
+# کلماتی که نشان می‌دهد کاربر مسئله فنی دارد → نباید روتر مزاحم شود
+TECH_HINTS = {"خراب","تعویض","عوض","کارنمیکنه","قطع","گیر","صدا","سوخته","روشن","خاموش"}
+
+def quick_reply_if_small(text: str, chat_id: int):
+    t = text.strip()
+    low = t.lower()
+
+    # 1) سلام خالی → یک خط خوش‌آمد + پرسش
+    if (low in GREET_EN) or (t in GREET_FA):
+        return "سلام! دقیق بگو روی کدام مورد کمک می‌خواهی؟ (مثلاً: «فرز انگشتی ۷۲۰وات»، «دیسک ترمز ۲۰۶»، «باتری ۱۸V ماکیتا»)"
+
+    # اگر نشانه‌های فنی دارد، نگذاریم روتر مزاحم شود
+    if any(w in t for w in TECH_HINTS):
+        return None
+
+    # 2) خیلی کوتاه و مبهم: فقط یک‌بار برای هر chat_id
+    if (len(t) <= 4 or len(t.split()) <= 2) and (chat_id not in ASKED_CLARIFY):
+        ASKED_CLARIFY.add(chat_id)
+        return "لطفاً دقیق‌تر بگو چه ابزاری/قطعه‌ای مدنظرت است (برند/مدل/توان/ولتاژ)."
+
     return None
 
-def ask_openai(user_text: str) -> str:
-    qr = quick_reply_if_small(user_text)
+
+def ask_openai(user_text: str, chat_id: int) -> str:
+    
+    qr = quick_reply_if_small(user_text, chat_id)
     if qr:
         return qr
 
@@ -83,9 +104,10 @@ def ask_openai(user_text: str) -> str:
         model="gpt-5-mini",
         instructions=f"{SYSTEM_PROMPT_SINAX}\n\nLanguage rule: {lang_hint}",
         input=user_text,
-        max_output_tokens=300  # کوتاه و سریع
+        max_output_tokens=300
     )
-    return resp.output_text or "باشه—لطفاً دقیق‌تر بگو چه ابزاری/قطعه‌ای مدنظرت است."
+    return resp.output_text or "باشه—لطفاً جزئیات بیشتری از ابزار/قطعه بگو (برند/مدل/توان/ولتاژ/سال ساخت)."
+
 
 
 def tg_send(chat_id: int, text: str):
@@ -97,22 +119,29 @@ def tg_send(chat_id: int, text: str):
 def telegram_webhook():
     if request.method == "GET":
         return "ok"  # تست مرورگر / پینگ
+
     upd = request.get_json(silent=True) or {}
     print("TG_UPDATE:", upd)  # ← در Logs ببین
+
     msg = upd.get("message") or upd.get("edited_message")
     if not msg or "text" not in msg:
         return "ok"
+
     chat_id = msg["chat"]["id"]
     user_text = msg["text"]
+
     try:
-        answer = ask_openai(user_text)
+        # تغییر مهم: chat_id هم می‌دهیم تا روتر فقط یک‌بار درخواست توضیح بدهد
+        answer = ask_openai(user_text, chat_id)
     except Exception as e:
         print("OPENAI_ERROR:", repr(e))
         answer = "SINAX: error occurred. Try again."
+
     r = requests.post(f"{TELEGRAM_API}/sendMessage",
                       json={"chat_id": chat_id, "text": answer}, timeout=20)
     print("TG_SEND_STATUS:", r.status_code, r.text)  # پاسخ تلگرام
     return "ok"
+
 
 
 # ===== HEALTH =====
