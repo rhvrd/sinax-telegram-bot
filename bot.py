@@ -68,9 +68,12 @@ def tg_send(chat_id: int, text: str):
                   json={"chat_id": chat_id, "text": text})
 
 # ===== TELEGRAM WEBHOOK =====
-@app.post("/telegram-webhook")
+@app.route("/telegram-webhook", methods=["POST","GET"])
 def telegram_webhook():
+    if request.method == "GET":
+        return "ok"  # تست مرورگر / پینگ
     upd = request.get_json(silent=True) or {}
+    print("TG_UPDATE:", upd)  # ← در Logs ببین
     msg = upd.get("message") or upd.get("edited_message")
     if not msg or "text" not in msg:
         return "ok"
@@ -78,10 +81,14 @@ def telegram_webhook():
     user_text = msg["text"]
     try:
         answer = ask_openai(user_text)
-    except Exception:
+    except Exception as e:
+        print("OPENAI_ERROR:", repr(e))
         answer = "SINAX: error occurred. Try again."
-    tg_send(chat_id, answer)
+    r = requests.post(f"{TELEGRAM_API}/sendMessage",
+                      json={"chat_id": chat_id, "text": answer}, timeout=20)
+    print("TG_SEND_STATUS:", r.status_code, r.text)  # پاسخ تلگرام
     return "ok"
+
 
 # ===== HEALTH =====
 @app.get("/")
