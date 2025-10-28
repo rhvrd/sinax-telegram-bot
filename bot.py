@@ -61,35 +61,39 @@ SYSTEM_PROMPT_SINAX = os.getenv("SINAX_PROMPT", DEFAULT_SINAX_PROMPT).strip()
 def detect_lang(txt: str) -> str:
     return "fa" if re.search(r"[\u0600-\u06FF]", txt) else "en"
 
-# فقط یک‌بار برای هر chat_id تذکر می‌دهیم
-ASKED_CLARIFY = set()
+# فقط سلام را کوتاه جواب بده؛ بقیه مستقیم برود OpenAI
 GREET_FA = {"سلام","درود","سلاام","salam"}
 GREET_EN = {"hi","hello","hey"}
-TECH_HINTS = {"خراب","تعویض","عوض","گیر","کارنمیکنه","کار نمی‌کنه","قطع","صدا","سوخته","روشن","خاموش","تیغه","دیسک","بلبرینگ","باتری","ولتاژ","توان","کابل"}
 
 def quick_reply_if_small(text: str, chat_id: int):
     t = text.strip()
     low = t.lower()
-
-    # فقط سلامِ خالی → پاسخ یک‌خطی
     if (low in GREET_EN) or (t in GREET_FA):
-        return "سلام! روی کدام مورد کمک می‌خواهی؟ (مثلاً: «فرز انگشتی ۷۲۰وات»، «دیسک ترمز ۲۰۶»، «باتری ۱۸V ماکیتا»)"
-
-    # اگر قبلاً یک‌بار تذکر داده‌ایم، دیگر تکرار نکن
-    if chat_id in ASKED_CLARIFY:
-        return None
-
-    # اگر پیام خیلی مبهم/کوتاه بود و نشانه فنی هم ندارد → فقط یک‌بار تذکر
-    if (len(t) <= 6 or len(t.split()) <= 2) and not any(w in t for w in TECH_HINTS):
-        ASKED_CLARIFY.add(chat_id)
-        return "لطفاً دقیق‌تر بگو چه ابزاری/قطعه‌ای مدنظرت است (برند/مدل/توان/ولتاژ)."
-
+        return "سلام! روی کدام مورد کمک می‌خواهی؟ (مثلاً: «اره فارسی‌بُر ۲۵۰میلی»، «دیسک ترمز ۲۰۶»، «باتری ۱۸V ماکیتا»)"
     return None
 
 
 
+
+def _extract_text(resp) -> str:
+    # بعضی نسخه‌های SDK ممکن است output_text خالی بدهند
+    try:
+        txt = (resp.output_text or "").strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+    try:
+        # مسیر پشتیبان
+        for block in resp.output:
+            for c in block.content:
+                if c.get("type") in ("output_text","text"):
+                    return c.get("text","").strip()
+    except Exception:
+        pass
+    return ""
+
 def ask_openai(user_text: str, chat_id: int) -> str:
-    # روتر: فقط یک‌بار تذکر؛ بعد از آن مستقیماً برو سراغ مدل
     qr = quick_reply_if_small(user_text, chat_id)
     if qr:
         return qr
@@ -103,7 +107,13 @@ def ask_openai(user_text: str, chat_id: int) -> str:
         input=user_text,
         max_output_tokens=300
     )
-    return resp.output_text or "باشه—لطفاً چند جزئیات از ابزار/قطعه بگو (برند/مدل/توان/ولتاژ)."
+    out = _extract_text(resp)
+    if out:
+        return out
+
+    # اگر باز هم چیزی نیامد، یک جواب مفید پیش‌فرض بده (برای ابزار/قطعات)
+    return "برای راهنمایی دقیق، نام ابزار/قطعه و مدل را بنویس (مثلاً: «اره فارسی‌بُر Hitachi C12RSH زاویه را دقیق نمی‌زند»)."
+
 
 
 
