@@ -1,98 +1,34 @@
-import os, requests, re
+import os, re, requests
 from flask import Flask, request
 from openai import OpenAI
 
-# ----- ENV VARS (set these in Render → Environment) -----
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]      # BotFather token
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]      # OpenAI API key
-SINAX_PROMPT = os.environ.get("SINAX_PROMPT")      # optional: override persona via ENV
+# ===== ENV VARS (set in Render → Environment) =====
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")     # BotFather token
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")     # OpenAI API key
+SETUP_SECRET  = os.getenv("SETUP_SECRET")        # temporary secret for /setup /unset
+
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    raise RuntimeError("Missing env vars: TELEGRAM_TOKEN / OPENAI_API_KEY")
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = Flask(__name__)
 
-# ---------- S i n a X   P e r s o n a  (default) ----------
+# ===== SinaX persona =====
 DEFAULT_SINAX_PROMPT = r"""
 You are SinaX – Smart Industrial Navigation Assistant eXpert, a bilingual (Persian–English) AI industrial consultant and technical advisor.
-
-🎯 Mission:
-Provide intelligent, unbiased, and practical guidance to users in Iran and the MENA region.
-Help users choose the most suitable equipment, spare parts, machines, materials, and tools for their business, factory, workshop, project, or store.
-
-🌍 Coverage (Category → Subcategories):
-(Use these as reference domains when classifying questions)
-**Tools & Hardware → ... (full taxonomy as provided by the user above)**
-
-**Automotive Spare Parts → ... (ICE / Hybrid / EV focus)**
-**Welding & Fabrication →**
-**Electrical, Lighting & Cabling →**
-**HVAC & Plumbing →**
-**Industrial Automation & Control →**
-**Laboratory & Testing →**
-**Chemicals & Lubricants →**
-**Paints & Coatings →**
-**Construction Materials →**
-**Safety & PPE →**
-
-⚖️ Constraints:
-- Do NOT provide shopping links or random online sellers.
-- Do NOT give live prices unless user-uploaded data exists.
-- Instead, explain which specifications matter and how to choose.
-- Focus on technical guidance, product comparisons, brand guidance, use-case analysis, and component/system matching.
-
-📝 Response Guidelines:
-- Language: Default output must be Persian, unless the user writes in English.
-- Style: Professional, structured, concise. Use bullet points and sections.
-- Sources: When possible, reference catalogs, datasheets, or standards (e.g., "Hilti Catalog 2023", "IEC 60745").
-- Uncertainty: If data is incomplete, do not guess. Ask one precise question at the end.
-- Fairness: Provide brand guidance but remain neutral; highlight strengths/weaknesses.
-- Clarity: Always organize the answer under the “Standard Response Template”.
-
-📋 Standard Response Template:
-
-🔧 Summary:
-(One-sentence conclusion or recommendation)
-
-📋 Suggested Options (max 3):
-Name/Model: … — Advantages: … — Limitations: …
-…
-…
-
-🧩 Key Specs to Check:
-Voltage, Power, Dimensions, Grade, Standards, Temperature range, Protection class…
-
-📦 Related Parts or Equivalents (if available):
-OEM code / Equivalent brand / Compatibility
-
-📚 References:
-(Name of catalog or relevant standard)
-
-❓ Follow-up Question:
-(One precise question to complete missing info)
-
-{
-  "sinaX_meta": {
-    "intent": "diagnosis|rfq|spec_lookup|equivalent|bom|advice",
-    "sector": "tools_hardware|woodworking|automotive|welding|electrical|hvac|automation|lab|chemicals|paints|construction|safety",
-    "confidence": 0.0,
-    "needed_info": ["e.g., exact shaft diameter", "nominal voltage"],
-    "suggested_next_actions": ["Upload machine nameplate photo", "Provide OEM code"],
-    "refs": ["Hilti Catalog 2023", "IEC 60745"],
-    "user_role": "technician|procurement|sales|manager|...",
-    "safety_flags": []
-  }
-}
+Mission: practical, unbiased guidance for Iran/MENA.
+Constraints: no shopping links, no live prices; focus on specs, selection criteria, compatibility, safety hints (IEC/ISO/ASME/NEC).
+Response style: Persian by default (English if user writes English); concise, structured.
+Template: Summary; Suggested Options (≤3); Key Specs; Equivalents; References; Follow-up Question.
 """
-
-SYSTEM_PROMPT_SINAX = SINAX_PROMPT or DEFAULT_SINAX_PROMPT.strip()
+SYSTEM_PROMPT_SINAX = os.getenv("SINAX_PROMPT", DEFAULT_SINAX_PROMPT).strip()
 
 def detect_lang(txt: str) -> str:
-    """Return 'fa' if Persian letters present, else 'en'."""
     return "fa" if re.search(r"[\u0600-\u06FF]", txt) else "en"
 
 def ask_openai(user_text: str) -> str:
-    # Switch output language: default Persian unless user writes in English
     lang = detect_lang(user_text)
     lang_hint = "پاسخ را به فارسی بده." if lang == "fa" else "Answer in English."
     resp = client.responses.create(
@@ -108,6 +44,7 @@ def tg_send(chat_id: int, text: str):
     requests.post(f"{TELEGRAM_API}/sendMessage",
                   json={"chat_id": chat_id, "text": text})
 
+# ===== TELEGRAM WEBHOOK =====
 @app.post("/telegram-webhook")
 def telegram_webhook():
     upd = request.get_json(silent=True) or {}
@@ -123,6 +60,26 @@ def telegram_webhook():
     tg_send(chat_id, answer)
     return "ok"
 
+# ===== HEALTH =====
 @app.get("/")
 def health():
     return "SINAX is up"
+
+# ===== TEMP: SET/UNSET WEBHOOK (remove after use) =====
+@app.get("/setup")
+def setup_webhook():
+    key = request.args.get("key")
+    if not SETUP_SECRET or key != SETUP_SECRET:
+        return ("forbidden", 403)
+    target = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url=https://{request.host}/telegram-webhook"
+    r = requests.get(target, timeout=20)
+    return r.text
+
+@app.get("/unset")
+def unset_webhook():
+    key = request.args.get("key")
+    if not SETUP_SECRET or key != SETUP_SECRET:
+        return ("forbidden", 403)
+    target = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook"
+    r = requests.get(target, timeout=20)
+    return r.text
