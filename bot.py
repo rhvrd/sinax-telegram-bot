@@ -14,6 +14,29 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = Flask(__name__)
+import openai as _oai
+import json
+
+# نسخه SDK را در لاگ نشان بده
+print("OPENAI_SDK_VERSION:", getattr(_oai, "__version__", "unknown"))
+
+# --- DIAG: تست مستقیم OpenAI از طریق مرورگر (محافظت با همان SETUP_SECRET) ---
+@app.get("/diag")
+def diag():
+    key = request.args.get("key")
+    if not SETUP_SECRET or key != SETUP_SECRET:
+        return ("forbidden", 403)
+    try:
+        r = client.responses.create(
+            model="gpt-5-mini",
+            instructions="Say OK",
+            input="ping",
+            max_output_tokens=16,
+        )
+        return {"ok": True, "output": r.output_text}
+    except Exception as e:
+        # خروجی خطا را واضح برگردان
+        return {"ok": False, "error": repr(e)}
 
 # ===== SinaX persona =====
 DEFAULT_SINAX_PROMPT = r"""
