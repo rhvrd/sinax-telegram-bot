@@ -152,6 +152,16 @@ def telegram_webhook():
     chat_id = msg["chat"]["id"]
     user_text = msg["text"]
 
+    # ----- custom /start message -----
+    if user_text.strip().startswith("/start"):
+        welcome = (
+            "سلام! چطور می‌توانم به شما کمک کنم؟\n"
+            "آیا سؤال خاصی در مورد ابزار برقی و دستی یا قطعات خودرو و موتور سیکلت دارید؟"
+        )
+        tg_send(chat_id, welcome)
+        return "ok"
+    # ---------------------------------
+
     try:
         answer = ask_openai(user_text)
     except Exception as e:
