@@ -1,5 +1,6 @@
 import os
 import re
+import tempfile
 import requests
 from flask import Flask, request
 from openai import OpenAI
@@ -12,9 +13,10 @@ SETUP_SECRET  = os.getenv("SETUP_SECRET")        # Optional key for /setup & /un
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     raise RuntimeError("Missing TELEGRAM_TOKEN or OPENAI_API_KEY")
 
-TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-client = OpenAI(api_key=OPENAI_API_KEY)
+TELEGRAM_API      = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+TELEGRAM_FILE_API = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}"
 
+client = OpenAI(api_key=OPENAI_API_KEY)
 app = Flask(__name__)
 
 # =============== DEFAULT PERSONA FOR SINAX ===============
@@ -28,8 +30,9 @@ FOCUS:
 
 HARD RULES (STRICT):
 - Default Persian unless user writes English.
-- Answers must stay short but technically dense: max 8–10 lines OR 6 bullets.
-- Avoid generic advice; every bullet should contain a concrete technical point (component name, failure mode, spec range, test method, etc.).
+- Answers must stay short but technically dense: max ~8–10 lines OR 6 bullets.
+- Avoid generic advice; every bullet should contain a concrete technical point
+  (component name, failure mode, spec range, test method, etc.).
 - Always give a concrete best-guess diagnosis and practical steps even with limited info.
 - Prefer root-cause thinking (why it happens) over superficial tips.
 - Ask EXACTLY ONE precise follow-up tailored to user’s text (e.g. missing spec, model, environment).
@@ -38,14 +41,14 @@ HARD RULES (STRICT):
 - Keep context from the last turn when possible.
 
 STANDARD FORMAT (technical replies, still short):
-1) Summary (۱–۲ جمله‌ی فنی، بدون حاشیه)
-2) Likely causes / Options (≤3 bullets – هرکدام با علت فنی یا مکانیزم خرابی)
-3) Key checks (3–6 bullets – تست‌ها یا بازرسی‌های مشخص، ترجیحاً با ابزار/واحد اندازه‌گیری)
-4) Next action (1 خط – گام عملی بعدی)
-5) One precise follow-up (1 خط – فقط یک سؤال دقیق)
+1) Summary (1–2 technical sentences)
+2) Likely causes / Options (≤3 bullets – each with technical reason / failure mode)
+3) Key checks (3–6 bullets – concrete inspections/tests with tools/units)
+4) Next action (1 line – clear next step)
+5) One precise follow-up (1 line – just one focused question)
 """.strip()
 
-SINAX_PROMPT = os.getenv("SINAX_PROMPT", "").strip()
+SINAX_PROMPT     = os.getenv("SINAX_PROMPT", "").strip()
 SINAX_PROMPT_URL = os.getenv("SINAX_PROMPT_URL", "").strip()
 
 def load_persona() -> str:
@@ -66,12 +69,15 @@ SYSTEM_PROMPT_SINAX = load_persona()
 def detect_lang(s: str) -> str:
     return "fa" if re.search(r"[\u0600-\u06FF]", s or "") else "en"
 
-def _extract_text(resp) -> str:
+def _extract_text_from_response(resp) -> str:
+    """
+    Helper for Responses API (text-only).
+    """
     try:
         t = (resp.output_text or "").strip()
         if t:
             return t
-    except:
+    except Exception:
         pass
 
     try:
@@ -81,7 +87,7 @@ def _extract_text(resp) -> str:
                     tx = (c.get("text") or "").strip()
                     if tx:
                         return tx
-    except:
+    except Exception:
         pass
 
     return ""
@@ -89,22 +95,101 @@ def _extract_text(resp) -> str:
 def _fallback_short(user_text: str, lang: str) -> str:
     if lang == "fa":
         return (
-            "🔧 احتمال ایراد رایج در تنظیم/مصرفی‌ها.\n"
-            "• عدم کالیبراسیون/لقی\n"
-            "• مصرفی فرسوده (تیغه/زغال/یاتاقان)\n"
+            "🔧 احتمال ایراد رایج در تنظیم یا مصرفی‌ها.\n"
+            "• عدم کالیبراسیون یا لقی مکانیکی\n"
+            "• مصرفی فرسوده (تیغه، زغال، یاتاقان و ...)\n"
             "• تطابق‌نبودن ابزار/متریال/ولتاژ\n"
-            "🧩 بررسی: هم‌راستایی، پیچ‌ها، مصرفی‌ها، ولتاژ\n"
+            "🧩 بررسی: هم‌راستایی، پیچ‌ها، مصرفی‌ها، ولتاژ ورودی.\n"
             "➡ یک سرویس سریع + کالیبراسیون انجام بده.\n"
-            "❓ مدل دقیق ابزار چیست؟"
+            "❓ مدل دقیق ابزار یا قطعه چیست؟"
         )
     return (
-        "Likely a setup/consumable issue.\n"
-        "Check alignment, fasteners, consumables, voltage.\n"
+        "Likely a setup / consumable issue.\n"
+        "- Check alignment, fasteners, consumables, input voltage.\n"
         "Next: quick service + calibration.\n"
-        "Question: exact model?"
+        "Question: exact tool/part model?"
     )
 
-# =============== MAIN OPENAI CALL =================
+def tg_send(chat_id: int, text: str):
+    requests.post(
+        f"{TELEGRAM_API}/sendMessage",
+        json={"chat_id": chat_id, "text": text},
+        timeout=20
+    )
+
+# ---- Telegram file helpers (for voice/audio/photo) ----
+def tg_get_file_url(file_id: str) -> str:
+    r = requests.get(
+        f"{TELEGRAM_API}/getFile",
+        params={"file_id": file_id},
+        timeout=20
+    )
+    data = r.json()
+    file_path = data.get("result", {}).get("file_path")
+    if not file_path:
+        raise RuntimeError("No file_path from Telegram")
+    return f"{TELEGRAM_FILE_API}/{file_path}"
+
+def transcribe_telegram_file(file_id: str) -> str:
+    """
+    Download Telegram voice/audio file and send to OpenAI speech-to-text.
+    Uses: gpt-4o-mini-transcribe
+    """
+    url = tg_get_file_url(file_id)
+
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+        resp = requests.get(url, timeout=60)
+        resp.raise_for_status()
+        tmp.write(resp.content)
+        tmp_path = tmp.name
+
+    with open(tmp_path, "rb") as f:
+        tr = client.audio.transcriptions.create(
+            model="gpt-4o-mini-transcribe",
+            file=f
+        )
+    return (tr.text or "").strip()
+
+def analyze_image_with_sinax(image_url: str) -> str:
+    """
+    Analyze a photo using GPT-4.1-mini (vision via Chat Completions + image_url).
+    """
+    try:
+        messages = [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT_SINAX,
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "این تصویر صنعتی را تحلیل کن و خیلی کوتاه، فنی و بولت‌وار توضیح بده "
+                            "که چه چیزی دیده می‌شود، چه کاربردی دارد، و اگر عیب یا ریسکی در ظاهر دیده می‌شود اشاره کن."
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": image_url},
+                    },
+                ],
+            },
+        ]
+
+        comp = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=messages,
+            max_tokens=260,
+        )
+        out = comp.choices[0].message.content or ""
+        return out.strip() or "نتوانستم تصویر را تحلیل کنم. لطفاً تصویر واضح‌تر بفرستید."
+    except Exception as e:
+        print("VISION_ERROR:", repr(e))
+        return "در تحلیل تصویر مشکلی پیش آمد. لطفاً دوباره امتحان کنید یا توضیح را متنی بفرستید."
+
+# =============== MAIN OPENAI CALL (TEXT) =================
 def ask_openai(user_text: str) -> str:
     lang = detect_lang(user_text)
     lang_hint = (
@@ -115,26 +200,18 @@ def ask_openai(user_text: str) -> str:
 
     try:
         resp = client.responses.create(
-            model="gpt-4o-mini",    # UPDATED & CORRECT
+            model="gpt-4.1-mini",
             instructions=f"{SYSTEM_PROMPT_SINAX}\n\nLanguage rule: {lang_hint}",
             input=user_text,
-            max_output_tokens=260
+            max_output_tokens=260,
         )
-        out = _extract_text(resp).strip()
+        out = _extract_text_from_response(resp).strip()
         if out:
             return out
     except Exception as e:
         print("OPENAI_ERROR:", repr(e))
 
     return _fallback_short(user_text, lang)
-
-# =============== TELEGRAM SEND ====================
-def tg_send(chat_id: int, text: str):
-    requests.post(
-        f"{TELEGRAM_API}/sendMessage",
-        json={"chat_id": chat_id, "text": text},
-        timeout=20
-    )
 
 # =============== WEBHOOK HANDLER ==================
 @app.route("/telegram-webhook", methods=["GET", "POST"])
@@ -146,34 +223,81 @@ def telegram_webhook():
     print("TG_UPDATE:", upd)
 
     msg = upd.get("message") or upd.get("edited_message")
-    if not msg or "text" not in msg:
+    if not msg:
         return "ok"
 
     chat_id = msg["chat"]["id"]
-    user_text = msg["text"]
 
-    # ----- custom /start message -----
-    if user_text.strip().startswith("/start"):
+    # ----- /start → custom welcome message -----
+    text = msg.get("text")
+    if text and text.strip().startswith("/start"):
         welcome = (
-            "سلام! چطور می‌توانم به شما کمک کنم؟\n"
-            "آیا سؤال خاصی در مورد ابزار برقی و دستی یا قطعات خودرو و موتور سیکلت دارید؟"
+            "سلام! من SinaX هستم.\n"
+            "چطور می‌توانم به شما کمک کنم؟\n"
+            "سؤال درباره ابزار برقی و دستی، قطعات خودرو/موتورسیکلت و ... را بپرسید.\n"
+            "می‌توانید متن بنویسید یا ویس بفرستید؛ عکس صنعتی هم تا حدی تحلیل می‌کنم."
         )
         tg_send(chat_id, welcome)
         return "ok"
-    # ---------------------------------
+    # -------------------------------------------
 
+    user_text = None
+
+    # ---- Voice message ----
+    if "voice" in msg:
+        try:
+            file_id = msg["voice"]["file_id"]
+            user_text = transcribe_telegram_file(file_id)
+        except Exception as e:
+            print("VOICE_ERROR:", repr(e))
+            tg_send(chat_id, "نتوانستم پیام صوتی را تبدیل به متن کنم. لطفاً یک‌بار دیگر یا به صورت نوشتاری بفرستید.")
+            return "ok"
+
+    # ---- Audio file ----
+    elif "audio" in msg:
+        try:
+            file_id = msg["audio"]["file_id"]
+            user_text = transcribe_telegram_file(file_id)
+        except Exception as e:
+            print("AUDIO_ERROR:", repr(e))
+            tg_send(chat_id, "در تبدیل فایل صوتی به متن مشکلی پیش آمد. لطفاً دوباره یا به‌صورت متن بفرستید.")
+            return "ok"
+
+    # ---- Photo (Vision) ----
+    elif "photo" in msg:
+        try:
+            # largest size = last element
+            file_id = msg["photo"][-1]["file_id"]
+            image_url = tg_get_file_url(file_id)
+            answer = analyze_image_with_sinax(image_url)
+            tg_send(chat_id, answer)
+            return "ok"
+        except Exception as e:
+            print("PHOTO_ERROR:", repr(e))
+            tg_send(chat_id, "در تحلیل تصویر مشکلی پیش آمد. لطفاً دوباره امتحان کنید یا توضیح را متنی بفرستید.")
+            return "ok"
+
+    # ---- Plain text ----
+    elif "text" in msg:
+        user_text = msg["text"]
+
+    # ---- Other types (document, sticker, etc.) ----
+    else:
+        tg_send(chat_id, "فعلاً فقط متن، ویس/فایل صوتی و عکس را می‌توانم پردازش کنم.")
+        return "ok"
+
+    if not user_text:
+        tg_send(chat_id, "متن قابل استفاده‌ای دریافت نشد. لطفاً دوباره امتحان کنید.")
+        return "ok"
+
+    # ---- Ask SinaX (text model) ----
     try:
         answer = ask_openai(user_text)
     except Exception as e:
         print("OPENAI_ERROR:", repr(e))
         answer = "SinaX: خطا رخ داد. دوباره تلاش کن."
 
-    r = requests.post(
-        f"{TELEGRAM_API}/sendMessage",
-        json={"chat_id": chat_id, "text": answer},
-        timeout=20
-    )
-    print("TG_SEND_STATUS:", r.status_code, r.text)
+    tg_send(chat_id, answer)
     return "ok"
 
 # =============== HEALTH CHECK =====================
