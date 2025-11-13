@@ -5,9 +5,9 @@ from flask import Flask, request
 from openai import OpenAI
 
 # ================== ENV VARS ==================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")     # ← BotFather token (در Render → Environment)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")     # ← OpenAI API key    (در Render → Environment)
-SETUP_SECRET  = os.getenv("SETUP_SECRET")        # ← رمز موقت برای /setup و /unset
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")     # BotFather token (Render → Environment)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")     # OpenAI API key    (Render → Environment)
+SETUP_SECRET  = os.getenv("SETUP_SECRET")        # Optional key for /setup & /unset
 
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     raise RuntimeError("Missing TELEGRAM_TOKEN or OPENAI_API_KEY")
@@ -17,7 +17,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = Flask(__name__)
 
-# =============== PERSONA LOADER ===============
+# =============== DEFAULT PERSONA FOR SINAX ===============
 DEFAULT_SINAX_PROMPT = r"""
 You are SinaX – a bilingual (FA/EN) industrial consultant for Iran/MENA.
 
@@ -30,29 +30,25 @@ HARD RULES (STRICT):
 - Default Persian unless user writes English.
 - Max 10 lines OR 6 bullets.
 - Always give a concrete best-guess diagnosis/steps even with limited info.
-- Ask EXACTLY ONE precise follow-up tailored to user’s text (no generic “be specific”).
-- No shopping links or live prices. Emphasize specs/selection/compatibility/safety.
-- If user greets or is vague: 1-line greeting + ONE clarifying question.
-- When user continues (“next question”), keep context from last turn if possible.
+- Ask EXACTLY ONE precise follow-up tailored to user’s text.
+- No shopping links or live prices.
+- If user is vague: 1-line greeting + ONE clarifying question.
+- Keep context from the last turn when possible.
 
-STANDARD FORMAT (when technical):
+STANDARD FORMAT (technical replies):
 1) Summary (1 line)
 2) Likely causes / Options (≤3)
 3) Key checks (3–6)
 4) Next action (1 line)
 5) One precise follow-up (1 line)
-
-REFERENCES (when useful): name standards/catalogs only (e.g., IEC 60745, Hilti Catalog).
 """.strip()
 
 SINAX_PROMPT = os.getenv("SINAX_PROMPT", "").strip()
 SINAX_PROMPT_URL = os.getenv("SINAX_PROMPT_URL", "").strip()
 
 def load_persona() -> str:
-    # اگر در ENV متن مستقیم گذاشتی:
     if SINAX_PROMPT:
         return SINAX_PROMPT
-    # اگر URL خام به متن دادی (مثل GitHub Gist Raw):
     if SINAX_PROMPT_URL:
         try:
             r = requests.get(SINAX_PROMPT_URL, timeout=10)
@@ -60,7 +56,6 @@ def load_persona() -> str:
                 return r.text
         except Exception:
             pass
-    # دیفالت
     return DEFAULT_SINAX_PROMPT
 
 SYSTEM_PROMPT_SINAX = load_persona()
@@ -70,52 +65,55 @@ def detect_lang(s: str) -> str:
     return "fa" if re.search(r"[\u0600-\u06FF]", s or "") else "en"
 
 def _extract_text(resp) -> str:
-    # سازگار با نسخه‌های مختلف SDK
     try:
         t = (resp.output_text or "").strip()
         if t:
             return t
-    except Exception:
+    except:
         pass
+
     try:
         for block in getattr(resp, "output", []) or []:
             for c in block.get("content", []):
-                if c.get("type") in ("output_text", "text"):
+                if c.get("type") in ("text", "output_text"):
                     tx = (c.get("text") or "").strip()
                     if tx:
                         return tx
-    except Exception:
+    except:
         pass
+
     return ""
 
-# فالبک کوتاه و کاربردی اگر مدل چیزی برنگرداند
 def _fallback_short(user_text: str, lang: str) -> str:
-    fa = (lang == "fa")
-    if fa:
+    if lang == "fa":
         return (
-            "🔧 خلاصه: احتمال ایراد رایج در تنظیم/مصرفی‌ها.\n"
-            "📋 علل محتمل:\n"
+            "🔧 احتمال ایراد رایج در تنظیم/مصرفی‌ها.\n"
             "• عدم کالیبراسیون/لقی\n"
-            "• مصرفیِ فرسوده (تیغه/زغال/یاتاقان)\n"
+            "• مصرفی فرسوده (تیغه/زغال/یاتاقان)\n"
             "• تطابق‌نبودن ابزار/متریال/ولتاژ\n"
-            "🧩 بررسی‌ها: هم‌راستایی، سفتی پیچ‌ها، سلامت مصرفی‌ها، ولتاژ ورودی\n"
-            "➡ گام بعدی: یک سرویس سریع + کالیبراسیون انجام بده سپس تست کن.\n"
-            "❓ سؤال: نام/مدل دقیق و علامت خرابی را بنویس."
+            "🧩 بررسی: هم‌راستایی، پیچ‌ها، مصرفی‌ها، ولتاژ\n"
+            "➡ یک سرویس سریع + کالیبراسیون انجام بده.\n"
+            "❓ مدل دقیق ابزار چیست؟"
         )
-    else:
-        return (
-            "Likely a common setup/consumable issue.\n"
-            "- Check alignment, fasteners, consumables, and input voltage.\n"
-            "Next: do a quick service + calibration, then re-test.\n"
-            "Question: exact model & symptom?"
-        )
+    return (
+        "Likely a setup/consumable issue.\n"
+        "Check alignment, fasteners, consumables, voltage.\n"
+        "Next: quick service + calibration.\n"
+        "Question: exact model?"
+    )
 
+# =============== MAIN OPENAI CALL =================
 def ask_openai(user_text: str) -> str:
     lang = detect_lang(user_text)
-    lang_hint = "پاسخ کوتاه، بولت‌وار و دقیق به فارسی." if lang == "fa" else "Answer briefly with precise bullets."
+    lang_hint = (
+        "پاسخ کوتاه، بولت‌وار و دقیق به فارسی."
+        if lang == "fa"
+        else "Answer briefly with precise bullets."
+    )
+
     try:
         resp = client.responses.create(
-            model="gpt-5-mini",
+            model="gpt-4o-mini",    # UPDATED & CORRECT
             instructions=f"{SYSTEM_PROMPT_SINAX}\n\nLanguage rule: {lang_hint}",
             input=user_text,
             max_output_tokens=260
@@ -125,8 +123,10 @@ def ask_openai(user_text: str) -> str:
             return out
     except Exception as e:
         print("OPENAI_ERROR:", repr(e))
+
     return _fallback_short(user_text, lang)
 
+# =============== TELEGRAM SEND ====================
 def tg_send(chat_id: int, text: str):
     requests.post(
         f"{TELEGRAM_API}/sendMessage",
@@ -134,11 +134,11 @@ def tg_send(chat_id: int, text: str):
         timeout=20
     )
 
-# =============== WEBHOOK ======================
+# =============== WEBHOOK HANDLER ==================
 @app.route("/telegram-webhook", methods=["GET", "POST"])
 def telegram_webhook():
     if request.method == "GET":
-        return "ok"  # health for webhook path
+        return "ok"
 
     upd = request.get_json(silent=True) or {}
     print("TG_UPDATE:", upd)
@@ -164,19 +164,24 @@ def telegram_webhook():
     print("TG_SEND_STATUS:", r.status_code, r.text)
     return "ok"
 
-# =============== HEALTH =======================
+# =============== HEALTH CHECK =====================
 @app.get("/")
 def health():
     return "SINAX is up"
 
-# ========== SET/UNSET WEBHOOK (TEMP) ==========
+# =============== SELF SETUP HELPERS ===============
 @app.get("/setup")
 def setup_webhook():
     key = request.args.get("key")
     if not SETUP_SECRET or key != SETUP_SECRET:
         return ("forbidden", 403)
+
     url = f"https://{request.host}/telegram-webhook"
-    r = requests.get(f"{TELEGRAM_API}/setWebhook", params={"url": url}, timeout=20)
+    r = requests.get(
+        f"{TELEGRAM_API}/setWebhook",
+        params={"url": url},
+        timeout=20
+    )
     return r.text
 
 @app.get("/unset")
@@ -184,5 +189,9 @@ def unset_webhook():
     key = request.args.get("key")
     if not SETUP_SECRET or key != SETUP_SECRET:
         return ("forbidden", 403)
-    r = requests.get(f"{TELEGRAM_API}/deleteWebhook", timeout=20)
+
+    r = requests.get(
+        f"{TELEGRAM_API}/deleteWebhook",
+        timeout=20
+    )
     return r.text
