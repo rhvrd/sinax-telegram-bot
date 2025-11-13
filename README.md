@@ -1,195 +1,128 @@
 SinaX – Smart Industrial Navigation Assistant eXpert (Telegram Bot)
 
-SinaX is a bilingual (Persian–English) AI industrial consultant and technical advisor designed for Iran & MENA users. It helps select and compare equipment, spare parts, machines, materials, tools, lighting, electrical, HVAC, automation, and more—delivering concise, actionable, safety-aware guidance.
+Bilingual Industrial Consultant for Iran & MENA (FA/EN)
 
-Tech stack: Python · Flask (webhook) · Telegram Bot API · OpenAI API (gpt-5-mini by default)
-Hosting: Works great on Render (free tier).
+SinaX یک دستیار صنعتی دو‌زبانه است برای انتخاب، عیب‌یابی و مقایسه تجهیزات، ابزار، قطعات یدکی، الکتریکال، روشنایی، HVAC، اتوماسیون، آزمایشگاهی، مواد شیمیایی/روغن، رنگ/پوشش و ایمنی/PPE.
+
+Tech stack: Python · Flask (webhook) · Telegram Bot API · OpenAI API (GPT-4.1-mini) · Render (Free-tier)
+Default model: gpt-4.1-mini
 
 ✨ Features
 
-Bilingual: Persian by default; replies in English if the user writes in English.
+Bilingual: پاسخ فارسی به‌صورت پیش‌فرض؛ اگر کاربر انگلیسی بنویسد، پاسخ انگلیسی.
 
-Industrial domains: Tools & Hardware, Automotive (ICE/Hybrid/EV), Welding, Electrical/Lighting, HVAC & Plumbing, Automation, Lab/Testing, Chemicals & Lubricants, Paints & Coatings, Construction, Safety & PPE.
+Industrial coverage: Tools/Hardware، Automotive، Welding، Electrical، Lighting، HVAC، Plumbing، Automation، Lab/Test، Chemicals/Lubes، Paints/Coatings، Construction، Safety/PPE.
 
-Structured answers using a Standard Response Template (Summary → Options → Key Specs → Equivalents → References → Follow-up).
+Structured replies: Summary → Options → Key Specs → Equivalents → References → Follow-up.
 
-Safety/Standards hints (IEC/ISO/ASME/NEC) without substituting formal HSE review.
+Safety/Standards hints: (IEC/ISO/ASME/NEC) بدون جایگزینی HSE رسمی.
 
-Configurable persona via SINAX_PROMPT (no redeploy needed).
+Configurable persona: از طریق SINAX_PROMPT بدون نیاز به Redeploy.
 
 📁 Repository Structure
 sinax-telegram-bot/
-├─ bot.py                 # Flask webhook + OpenAI call (gpt-5-mini)
-├─ requirements.txt       # flask, requests, openai, gunicorn
-└─ README.md              # this file
+│─ bot.py
+│─ requirements.txt
+└─ README.md
 
 
-Optional files you can add:
+Optional:
 
-runtime.txt               # e.g. python-3.11 (Render)
-.gitignore                # include .env, __pycache__/
+runtime.txt
+.gitignore
 
-🤖 SinaX Persona (Default)
+🤖 Default SinaX Persona (Summary Version)
 
-Mission: Practical, unbiased guidance for industrial selection and troubleshooting in Iran/MENA.
+Mission: راهنمایی صنعتی حرفه‌ای، دقیق و سازگار با بازار ایران/MENA.
 
-Constraints:
+Rules:
 
-No shopping links or random sellers.
+بدون لینک خرید یا فروشنده
 
-No live prices unless user supplies data.
+بدون قیمت لحظه‌ای (مگر کاربر بدهد)
 
-Focus on specs, selection criteria, comparisons, compatibility, and safe use.
+پاسخ کوتاه، مهندسی و بولت‌وار
 
-Response Style: Professional, concise, bullet-based, Persian by default.
+فقط یک سؤال Follow-up
 
-Template:
+فارسی به‌صورت پیش‌فرض
 
-🔧 Summary
+Response Template:
 
-📋 Suggested Options (≤3): Name/Model — Advantages — Limitations
+🔧 Summary  
+📋 Options ≤3  
+🧩 Key Specs  
+📦 Equivalents  
+📚 Reference Hints  
+❓ One Follow-up  
 
-🧩 Key Specs to Check
-
-📦 Related Parts / Equivalents
-
-📚 References (catalogs/standards)
-
-❓ Follow-up Question
-
-Meta (internal guidance): sinaX_meta.intent, sector, confidence, needed_info, refs, user_role, safety_flags.
-
-You can override the persona with the SINAX_PROMPT env var.
-
-🚀 Quick Start (Render – recommended)
-
-Fork/clone this repo (or create your own with the same files).
-
-In Render
- → New → Web Service → connect your GitHub repo.
-
-Build/Start
-
-Build command:
-
+🚀 Deployment on Render (Recommended)
+1. Build Command
 pip install -r requirements.txt
 
-
-Start command:
-
+2. Start Command
 gunicorn bot:app --bind 0.0.0.0:$PORT
 
+3. Environment Variables
+TELEGRAM_TOKEN = <BotFather token>
+OPENAI_API_KEY = <OpenAI key>
+(optional) SINAX_PROMPT
 
-Environment Variables (Render → Environment):
+4. Set Telegram Webhook
 
-TELEGRAM_TOKEN = your BotFather token (e.g. 123456:AA...)
+Replace token + your Render domain:
 
-OPENAI_API_KEY = your OpenAI API key (e.g. sk-...)
+https://api.telegram.org/bot<TELEGRAM_TOKEN>/setWebhook?url=https://<YOUR-RENDER>.onrender.com/telegram-webhook
 
-(optional) SINAX_PROMPT = custom persona text
-
-Deploy (if editing after creation: Manual Deploy → Clear cache & deploy).
-
-Set Telegram webhook (replace token & domain):
-
-https://api.telegram.org/bot<TELEGRAM_TOKEN>/setWebhook?url=https://<your-render-url>/telegram-webhook
-
-
-Check status:
-
+Check Webhook Status:
 https://api.telegram.org/bot<TELEGRAM_TOKEN>/getWebhookInfo
 
-🧪 Local Development (optional)
-
-You need a public HTTPS tunnel (e.g., ngrok) to receive Telegram webhooks locally.
-
-Create a local .env (do not commit):
-
-TELEGRAM_TOKEN=123456:ABC...
-OPENAI_API_KEY=sk-...
-
-
-Install deps:
-
+🧪 Local Development (Optional)
+Install:
 pip install -r requirements.txt
 
-
-Run Flask:
-
+Run:
 python -m flask --app bot run --port 8080
 
-
-Expose via ngrok and set webhook:
-
+Expose via ngrok:
 ngrok http 8080
-curl "https://api.telegram.org/bot$TELEGRAM_TOKEN/setWebhook?url=https://<ngrok-url>/telegram-webhook"
 
-🛡️ Security & Secrets
+Set webhook to ngrok URL:
+https://api.telegram.org/bot<TELEGRAM_TOKEN>/setWebhook?url=https://<NGROK>.ngrok.io/telegram-webhook
 
-Never hard-code tokens/keys in bot.py.
+🛡️ Security
 
-Use Render Environment Variables or a local .env (git-ignored).
+کلیدها را در Environment Variables قرار دهید، نه داخل کد.
 
-If you accidentally exposed a key, revoke/rotate immediately.
+در صورت لو رفتن → rotate.
 
-Limit logs; don’t log user secrets/tokens.
+از لاگ‌برداری اطلاعات حساس خودداری کنید.
 
-🧠 Model & Tuning
+🧠 Model Notes
 
-Default model: gpt-5-mini (fast & cost-effective for Telegram).
+Default model: GPT-4.1-mini (بهترین تعادل کیفیت/هزینه برای تحلیل فنی)
 
-Temperature: 0.2 (stable/engineering tone).
+Stable, technical, low cost
 
-Output tokens: ≤ 800 (Telegram-friendly).
+برای درخواست‌های بسیار پیچیده می‌توان موقتاً مدل قوی‌تر انتخاب کرد:
 
-For tough requests, you can temporarily switch to gpt-5 per request.
+model = "gpt-4.1-mini"
+if "ASME" in user_text or "root cause" in user_text:
+    model = "gpt-5.1"
 
-Example toggle (pseudo):
+❓ FAQ
 
-model = "gpt-5-mini"
-if len(user_text) > 700 or any(k in user_text.lower() for k in ["root cause","asme","iec","trade-off"]):
-    model = "gpt-5"
+Bot پاسخ نمی‌دهد؟
 
-❓FAQ
+webhook باید دقیقاً روی /telegram-webhook باشد
 
-Q: Where do I put tokens?
-A: Render → Environment → add TELEGRAM_TOKEN, OPENAI_API_KEY. Save → Redeploy.
+Render Logs را بررسی کنید
 
-Q: My service deployed, but the bot doesn’t reply.
+وضعیت Billing و کلیدهای OpenAI را چک کنید
 
-Ensure webhook is set to .../telegram-webhook.
-
-Check Render Logs for errors.
-
-Verify your OpenAI billing/limits and token names.
-
-Q: Can I connect to my Custom GPT page directly?
-A: No. Custom GPTs don’t expose an API. We replicate the persona via SINAX_PROMPT.
-
-🧩 Troubleshooting
-
-Create requirements.txt error (Render)
-Ensure requirements.txt is in the repo root and named exactly requirements.txt.
-
-404/405 on webhook
-Route must be POST /telegram-webhook and your webhook must point there.
-
-401/403 from OpenAI
-Check API key & billing status.
-
-Timeout/slow
-Keep responses concise; consider gpt-5-mini; reduce max_output_tokens.
+آیا می‌توان Custom GPT را وصل کرد؟
+خیر. API ندارد. فقط با SINAX_PROMPT می‌توان رفتار شبیه‌سازی کرد.
 
 📝 License
 
-You own your content and branding. This example code can be used in your projects; consider adding your preferred license (e.g., MIT).
-
-🙌 Credits
-
-Telegram Bot API
-
-OpenAI API
-
-Flask + Gunicorn
-
-Thanks to the SinaX team for the domain taxonomy and persona.
+استفاده آزاد برای پروژه‌های شخصی و تجاری.
