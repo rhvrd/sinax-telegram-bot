@@ -1,23 +1,66 @@
 SinaX – Smart Industrial Navigation Assistant eXpert (Telegram Bot)
 
-Bilingual Industrial Consultant for Iran & MENA (FA/EN)
+Bilingual Industrial AI Consultant for Iran & MENA (FA/EN)
 
-SinaX یک دستیار صنعتی دو‌زبانه است برای انتخاب، عیب‌یابی و مقایسه تجهیزات، ابزار، قطعات یدکی، الکتریکال، روشنایی، HVAC، اتوماسیون، آزمایشگاهی، مواد شیمیایی/روغن، رنگ/پوشش و ایمنی/PPE.
+SinaX یک دستیار هوشمند و صنعتی پیشرفته است برای انتخاب، عیب‌یابی، تشخیص فنی، مقایسه تجهیزات, و ارائه‌ی تحلیل‌های مهندسی کوتاه و دقیق در حوزه‌های:
 
-Tech stack: Python · Flask (webhook) · Telegram Bot API · OpenAI API (GPT-4.1-mini) · Render (Free-tier)
-Default model: gpt-4.1-mini
+Power Tools / ابزار برقی و کارگاهی (نسخهٔ فوق‌پیشرفته)
+
+Automotive (ICE / Hybrid / EV)
+
+Motorcycle (Carb / EFI / Electrical / Transmission)
+
+Welding
+
+Electrical
+
+Lighting
+
+HVAC / Plumbing
+
+Automation
+
+Lab/Test
+
+Chemicals/Lubes
+
+Paints/Coatings
+
+Construction
+
+PPE/Safety
+
+SinaX for Telegram is powered by GPT-4.1-mini (default), hosted on Render (Free Tier) و کاملاً دو‌زبانه است (FA → پیش‌فرض، EN → در صورت دریافت پیام انگلیسی).
 
 ✨ Features
+✔ Bilingual AI Assistant (FA/EN)
 
-Bilingual: پاسخ فارسی به‌صورت پیش‌فرض؛ اگر کاربر انگلیسی بنویسد، پاسخ انگلیسی.
+پاسخ‌ها فارسی هستند مگر اینکه کاربر انگلیسی بنویسد.
 
-Industrial coverage: Tools/Hardware، Automotive، Welding، Electrical، Lighting، HVAC، Plumbing، Automation، Lab/Test، Chemicals/Lubes، Paints/Coatings، Construction، Safety/PPE.
+✔ 3 Advanced Technical Domains (New!)
 
-Structured replies: Summary → Options → Key Specs → Equivalents → References → Follow-up.
+Power Tools – Ultra Engineering Version
+شامل موتورهای Series-wound، Brushless، Induction، Hammer Mechanism، Failure Modes، تست‌ها، Runout، Bearings، Gearbox، MOSFET، SDS، IEC/ISO references.
 
-Safety/Standards hints: (IEC/ISO/ASME/NEC) بدون جایگزینی HSE رسمی.
+Automotive – ICE / Hybrid / EV
+شامل Engine، Fuel، GDI، Ignition، Cooling، Transmission (AT, CVT, DCT)، Hybrid battery, Inverter, EV insulation tests، SAE/ISO references.
 
-Configurable persona: از طریق SINAX_PROMPT بدون نیاز به Redeploy.
+Motorcycles – Advanced
+شامل Carb/EFI، AFR، Injector flow، CDI/ECU، Stator، Charging, Clutch، Gearbox، Compression، Chain alignment، JASO references.
+
+✔ Structured Responses
+
+همهٔ پاسخ‌ها طبق قالب زیر هستند:
+Summary → Failure Modes → Key Tests → Next Action → Follow-up Question → References
+
+✔ Technical Standards Awareness
+
+اشاره به استانداردهای معتبر بدون جایگزینی HSE رسمی:
+IEC / ISO / ASME / AGMA / SAE / JASO
+
+✔ Configurable Persona
+
+با متغیر SINAX_PROMPT بدون نیاز به redeploy.
 
 📁 Repository Structure
 sinax-telegram-bot/
@@ -26,103 +69,130 @@ sinax-telegram-bot/
 └─ README.md
 
 
-Optional:
+اختیاری:
 
 runtime.txt
-.gitignore
 
-🤖 Default SinaX Persona (Summary Version)
+.gitignore (بخصوص .env, pycache)
 
-Mission: راهنمایی صنعتی حرفه‌ای، دقیق و سازگار با بازار ایران/MENA.
+🤖 SinaX Persona (Updated Summary Version)
 
-Rules:
+SinaX یک دستیار صنعتی فوق‌فنی است که:
 
-بدون لینک خرید یا فروشنده
+فارسی پیش‌فرض
 
-بدون قیمت لحظه‌ای (مگر کاربر بدهد)
+پاسخ کوتاه، دقیق، مهندسی
 
-پاسخ کوتاه، مهندسی و بولت‌وار
+حداکثر ۱۰ خط یا ۶ بولت
 
-فقط یک سؤال Follow-up
+فقط یک Follow-up
 
-فارسی به‌صورت پیش‌فرض
+بدون لینک خرید، بدون قیمت لحظه‌ای
 
-Response Template:
+تمرکز: Failure Modes، Diagnostics، Safety، Compatibility
 
-🔧 Summary  
-📋 Options ≤3  
-🧩 Key Specs  
-📦 Equivalents  
-📚 Reference Hints  
-❓ One Follow-up  
+بخش‌های پیشرفته‌ی Persona
+
+(این‌ها در محیط ENV یا پرامپت اصلی قرار می‌گیرند)
+
+POWER TOOLS – Advanced Engineering Version
+
+AUTOMOTIVE – Advanced ICE/Hybrid/EV
+
+MOTORCYCLE – Advanced Carb/EFI/Ignition/Charging
+
+هر بخش شامل موارد زیر است:
+
+ساختار سیستم
+
+خرابی‌های رایج
+
+تست‌های مهندسی
+
+علائم بالینی خرابی
+
+قطعات تعمیراتی
+
+Keywords
+
+رفرنس‌های استاندارد معتبر
 
 🚀 Deployment on Render (Recommended)
-1. Build Command
+Build Command
 pip install -r requirements.txt
 
-2. Start Command
+Start Command
 gunicorn bot:app --bind 0.0.0.0:$PORT
 
-3. Environment Variables
-TELEGRAM_TOKEN = <BotFather token>
-OPENAI_API_KEY = <OpenAI key>
-(optional) SINAX_PROMPT
+Environment Variables
+TELEGRAM_TOKEN=xxxx
+OPENAI_API_KEY=xxxx
+SINAX_PROMPT= (اختیاری – پرامپت شخصی)
 
-4. Set Telegram Webhook
+🔗 Set Telegram Webhook
 
-Replace token + your Render domain:
+توکن و دامنه را جایگزین کنید:
 
-https://api.telegram.org/bot<TELEGRAM_TOKEN>/setWebhook?url=https://<YOUR-RENDER>.onrender.com/telegram-webhook
+https://api.telegram.org/bot<TELEGRAM_TOKEN>/setWebhook?url=https://<your-render-app>.onrender.com/telegram-webhook
 
-Check Webhook Status:
+Check Status
 https://api.telegram.org/bot<TELEGRAM_TOKEN>/getWebhookInfo
 
-🧪 Local Development (Optional)
-Install:
+🧪 Local Development
+Install
 pip install -r requirements.txt
 
-Run:
+Run
 python -m flask --app bot run --port 8080
 
-Expose via ngrok:
+Expose via ngrok
 ngrok http 8080
 
-Set webhook to ngrok URL:
-https://api.telegram.org/bot<TELEGRAM_TOKEN>/setWebhook?url=https://<NGROK>.ngrok.io/telegram-webhook
+Set webhook
+https://api.telegram.org/bot<TELEGRAM_TOKEN>/setWebhook?url=https://<ngrok>.ngrok.io/telegram-webhook
 
-🛡️ Security
+🛡️ Security Notes
 
-کلیدها را در Environment Variables قرار دهید، نه داخل کد.
+هرگز Token یا API Key را در کد نگذارید.
 
-در صورت لو رفتن → rotate.
+فقط در Render → Environment variables
 
-از لاگ‌برداری اطلاعات حساس خودداری کنید.
+در صورت لو رفتن → فوراً rotate کنید
+
+از لاگ‌برداری پیام‌های حساس کاربر خودداری کنید.
 
 🧠 Model Notes
+Default Model
 
-Default model: GPT-4.1-mini (بهترین تعادل کیفیت/هزینه برای تحلیل فنی)
+GPT-4.1-mini
+بهترین تعادل هزینه/کیفیت برای پاسخ‌های فنی، سریع، دقیق.
 
-Stable, technical, low cost
+Dynamic Model Switching (Optional)
 
-برای درخواست‌های بسیار پیچیده می‌توان موقتاً مدل قوی‌تر انتخاب کرد:
+برای درخواست‌های بسیار پیچیده:
 
 model = "gpt-4.1-mini"
-if "ASME" in user_text or "root cause" in user_text:
+if any(k in user_text.lower() for k in ["root cause","asme","timing chain","inverter","thermal runaway"]):
     model = "gpt-5.1"
 
 ❓ FAQ
+Bot جواب نمی‌دهد؟
 
-Bot پاسخ نمی‌دهد؟
+webhook → باید دقیقاً /telegram-webhook باشد
 
-webhook باید دقیقاً روی /telegram-webhook باشد
+Render Logs را چک کنید
 
-Render Logs را بررسی کنید
+کلیدهای OpenAI معتبر باشند
 
-وضعیت Billing و کلیدهای OpenAI را چک کنید
+Billing فعال باشد
 
-آیا می‌توان Custom GPT را وصل کرد؟
-خیر. API ندارد. فقط با SINAX_PROMPT می‌توان رفتار شبیه‌سازی کرد.
+آیا می‌توان Custom GPT را به بات وصل کرد؟
+
+خیر.
+Custom GPT API ندارد.
+فقط با SINAX_PROMPT می‌توان رفتار آن را شبیه‌سازی کرد.
 
 📝 License
 
-استفاده آزاد برای پروژه‌های شخصی و تجاری.
+استفادهٔ آزاد برای پروژه‌های شخصی و تجاری.
+(در صورت نیاز می‌توان MIT یا Apache 2.0 اضافه کرد.)
