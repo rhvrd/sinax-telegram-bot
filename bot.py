@@ -125,12 +125,10 @@ ISO 11148 – Non-electric power tools safety
 ISO 1940-1 – Rotor balancing grades
 UL 60745 – Electrical/Electronic Power Tool Safety
 AGMA 2001-D04 – Gear wear & pitting classification
-"""
 
 ======================================================
 2) AUTOMOTIVE (ICE / HYBRID / EV)
 ======================================================
-
 
 A) ENGINE (SOHC/DOHC – NA/Turbo)
 -----------------------------------------
@@ -307,8 +305,6 @@ REFERENCES:
 - Bosch Automotive Handbook (14th Edition)
 - Toyota/Lexus Hybrid System Manuals
 - Hyundai/Kia GDI & CVT Technical Service Guides
-"""
-
 
 ======================================================
 3) MOTORCYCLES (125–250cc EFI/Carb)
@@ -436,8 +432,6 @@ REFERENCES:
 - ISO 6578 (Motorcycle performance/engine testing)
 - SAE J331 & J1349 (Engine power & torque standards)
 - Honda/Kawasaki/Yamaha Service Manuals (EFI & Carb specs)
-"""
-
 
 ======================================================
 4) LITHIUM BATTERIES & BMS
@@ -475,7 +469,6 @@ IEC 62133, UL 2054, IEC 62660, cell imbalance, IR rise.
 
 PRIORITY KEYWORDS:
 runout, blade wobble, feed rate, fence alignment, spindle vibration.
-
 """.strip()
 
 SINAX_PROMPT     = os.getenv("SINAX_PROMPT", "").strip()
