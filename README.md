@@ -85,6 +85,8 @@ Default Model
 GPT-4.1-mini
 بهترین تعادل سرعت/هزینه/دقت برای کاربردهای مهندسی.
 
+Now using ~420 max_output_tokens for complete technical responses.
+
 Dynamic Switching (Optional)
 
 برای درخواست‌های بسیار تخصصی:
